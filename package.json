@@ -1,0 +1,24 @@
+{
+  "name": "goscraper",
+  "version": "1.0.0",
+  "description": "This project is a simple Golang API that fetches HTML content from a specified URL and parses it dynamically using regex. The API is designed for performance, speed, and accuracy, accommodating changes in the HTML structure.",
+  "main": "scraper.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rahuletto/goscraper.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Rahuletto/goscraper/issues"
+  },
+  "homepage": "https://github.com/Rahuletto/goscraper#readme",
+  "dependencies": {
+    "puppeteer": "^24.1.0"
+  }
+}

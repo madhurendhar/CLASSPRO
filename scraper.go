@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,63 +23,234 @@ const (
 	apiKey     = "AIzaSyDCnKzA0SXVoeBvuMMi3lY-mBzenx-NDL4"
 	cx         = "c32ff7a1169244027"
 	searchType = "web"
+	
+	// More conservative rate limiting constants
+	initialBackoff = 10 * time.Second  // Increased from 2s
+	maxBackoff     = 122 * time.Second // Increased from 60s
+	maxRetries     = 5                 // Increased from 3
+	
+	// Quota management
+	requestsPerMinute = 10  // Google's free tier typically allows ~100 queries per day
+	workerDelay      = 15 * time.Second // Increased from 5s
 )
 
-func fetchMetaTitle(url string) (Result, error) {
-	// Set up the HTTP client
-	client := &http.Client{}
-	searchURL := fmt.Sprintf("https://www.googleapis.com/customsearch/v1?q=site:%s&key=%s&cx=%s&searchType=%s", url, apiKey, cx, searchType)
-
-	resp, err := client.Get(searchURL)
-	if err != nil {
-		return Result{}, err
+// Exponential backoff implementation
+func getBackoffDuration(retry int) time.Duration {
+	// Calculate exponential backoff with jitter
+	backoff := float64(initialBackoff) * math.Pow(2, float64(retry))
+	if backoff > float64(maxBackoff) {
+		backoff = float64(maxBackoff)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return Result{}, fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return Result{}, err
-	}
-
-	var searchResult struct {
-		Items []struct {
-			Title string `json:"title"`
-			Link  string `json:"link"`
-		} `json:"items"`
-	}
-
-	err = json.Unmarshal(body, &searchResult)
-	if err != nil {
-		return Result{}, err
-	}
-
-	if len(searchResult.Items) == 0 {
-		return Result{Title: "No Title Found", URL: url}, nil
-	}
-
-	return Result{Title: searchResult.Items[0].Title, URL: url}, nil
+	// Add jitter (±20%)
+	jitter := (rand.Float64() * 0.4 - 0.2) * backoff
+	duration := time.Duration(backoff + jitter)
+	return duration
 }
 
-func worker(urls []string, results chan<- Result, remainingUrls chan<- string, wg *sync.WaitGroup, stop chan<- struct{}) {
-	defer wg.Done()
-	for _, url := range urls {
-		fmt.Printf("Fetching: %s\n", url)
-		result, err := fetchMetaTitle(url)
+// Add a quota manager to track API usage
+type QuotaManager struct {
+	mu       sync.Mutex
+	requests int
+	reset    time.Time
+}
+
+func NewQuotaManager() *QuotaManager {
+	return &QuotaManager{
+		reset: time.Now().Add(time.Minute),
+	}
+}
+
+func (qm *QuotaManager) CheckQuota() bool {
+	qm.mu.Lock()
+	defer qm.mu.Unlock()
+	
+	now := time.Now()
+	if now.After(qm.reset) {
+		qm.requests = 0
+		qm.reset = now.Add(time.Minute)
+	}
+	
+	if qm.requests >= requestsPerMinute {
+		return false
+	}
+	
+	qm.requests++
+	return true
+}
+
+func fetchMetaTitle(url string, qm *QuotaManager) (Result, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	
+	var lastErr error
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			backoff := getBackoffDuration(retry)
+			fmt.Printf("Retrying %s after %v (attempt %d/%d)\n", url, backoff, retry+1, maxRetries)
+			time.Sleep(backoff)
+		}
+
+		// Check quota before making request
+		if !qm.CheckQuota() {
+			waitTime := time.Until(qm.reset)
+			fmt.Printf("Rate limit reached, waiting %v before next request\n", waitTime)
+			time.Sleep(waitTime)
+		}
+
+		searchURL := fmt.Sprintf("https://www.googleapis.com/customsearch/v1?q=site:%s&key=%s&cx=%s&searchType=%s", 
+			url, apiKey, cx, searchType)
+
+		resp, err := client.Get(searchURL)
 		if err != nil {
-			fmt.Printf("Error fetching %s: %v\n", url, err)
-			if strings.Contains(err.Error(), "405") {
-				stop <- struct{}{}
-				return
-			}
-			remainingUrls <- url
+			lastErr = err
 			continue
 		}
-		results <- result
-		time.Sleep(2 * time.Second) // Add delay to avoid rate limiting
+		defer resp.Body.Close()
+
+		switch resp.StatusCode {
+		case http.StatusOK:
+			// Read and log the response body for debugging
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			var searchResult struct {
+				Items []struct {
+					Title string `json:"title"`
+					Link  string `json:"link"`
+				} `json:"items"`
+				Error struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+					Status  string `json:"status"`
+					Details []struct {
+						Message string `json:"message"`
+						Domain  string `json:"domain"`
+						Reason  string `json:"reason"`
+					} `json:"details"`
+				} `json:"error"`
+				SearchInformation struct {
+					TotalResults        string  `json:"totalResults"`
+					SearchTime         float64 `json:"searchTime"`
+					FormattedSearchTime string  `json:"formattedSearchTime"`
+				} `json:"searchInformation"`
+				Queries struct {
+					Request []struct {
+						Count       int    `json:"count"`
+						StartIndex  int    `json:"startIndex"`
+						TotalResults string `json:"totalResults"`
+						SearchTerms  string `json:"searchTerms"`
+					} `json:"request"`
+					NextPage []struct {
+						Count       int    `json:"count"`
+						StartIndex  int    `json:"startIndex"`
+						TotalResults string `json:"totalResults"`
+						SearchTerms  string `json:"searchTerms"`
+					} `json:"nextPage"`
+				} `json:"queries"`
+			}
+
+			if err := json.Unmarshal(body, &searchResult); err != nil {
+				lastErr = fmt.Errorf("JSON parse error: %v, body: %s", err, string(body))
+				continue
+			}
+
+			// Check for API-level errors
+			if searchResult.Error.Code != 0 {
+				errorMsg := fmt.Sprintf("API error %d: %s (%s)", 
+					searchResult.Error.Code, 
+					searchResult.Error.Message,
+					searchResult.Error.Status)
+				
+				if len(searchResult.Error.Details) > 0 {
+					errorMsg += "\nDetails:"
+					for _, detail := range searchResult.Error.Details {
+						errorMsg += fmt.Sprintf("\n- %s (%s: %s)", 
+							detail.Message, detail.Domain, detail.Reason)
+					}
+				}
+
+				if searchResult.Error.Code == 429 {
+					lastErr = fmt.Errorf("rate limit: %s", errorMsg)
+					continue
+				}
+				
+				if searchResult.Error.Code == 403 {
+					return Result{}, fmt.Errorf("quota exceeded: %s", errorMsg)
+				}
+
+				return Result{}, fmt.Errorf(errorMsg)
+			}
+
+			if len(searchResult.Items) == 0 {
+				return Result{Title: "No Title Found", URL: url}, nil
+			}
+
+			// Print quota information on successful response
+			if searchResult.Error.Code == 0 {
+				fmt.Printf("\nQuota Information for %s:\n", url)
+				fmt.Printf("Search Time: %s\n", searchResult.SearchInformation.FormattedSearchTime)
+				if len(searchResult.Queries.Request) > 0 {
+					fmt.Printf("Request Count: %d\n", searchResult.Queries.Request[0].Count)
+					fmt.Printf("Total Results: %s\n", searchResult.Queries.Request[0].TotalResults)
+				}
+				fmt.Println("---")
+			}
+
+			return Result{Title: searchResult.Items[0].Title, URL: url}, nil
+
+		case http.StatusTooManyRequests:
+			// Get retry-after header if available
+			if retryAfter := resp.Header.Get("Retry-After"); retryAfter != "" {
+				if seconds, err := strconv.Atoi(retryAfter); err == nil {
+					waitTime := time.Duration(seconds) * time.Second
+					fmt.Printf("Rate limited. Waiting %v as specified by server\n", waitTime)
+					time.Sleep(waitTime)
+				}
+			}
+			lastErr = fmt.Errorf("rate limited (429)")
+			continue
+
+		case http.StatusServiceUnavailable, 
+			 http.StatusBadGateway, 
+			 http.StatusGatewayTimeout:
+			lastErr = fmt.Errorf("temporary error: %d", resp.StatusCode)
+			continue
+
+		default:
+			return Result{}, fmt.Errorf("HTTP error: %d", resp.StatusCode)
+		}
+	}
+
+	return Result{}, fmt.Errorf("max retries exceeded: %v", lastErr)
+}
+
+func worker(id int, urls []string, results chan<- Result, remainingUrls chan<- string, wg *sync.WaitGroup, stop chan<- struct{}, qm *QuotaManager) {
+	defer wg.Done()
+
+	rateLimiter := time.NewTicker(workerDelay)
+	defer rateLimiter.Stop()
+
+	for _, url := range urls {
+		select {
+		case <-rateLimiter.C:
+			fmt.Printf("Worker %d fetching: %s\n", id, url)
+			result, err := fetchMetaTitle(url, qm)
+			
+			if err != nil {
+				fmt.Printf("Worker %d error fetching %s: %v\n", id, url, err)
+				if strings.Contains(err.Error(), "HTTP error: 405") {
+					stop <- struct{}{}
+					return
+				}
+				remainingUrls <- url
+				continue
+			}
+			results <- result
+		}
 	}
 }
 
@@ -1862,8 +2036,11 @@ func main() {
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 
-	// Split URLs into chunks and assign to goroutines
-	numWorkers := 20 // Number of goroutines
+	// Create quota manager
+	qm := NewQuotaManager()
+
+	// Reduce workers further
+	numWorkers := 3 // Reduced from 5
 	chunkSize := (len(urls) + numWorkers - 1) / numWorkers
 
 	for i := 0; i < numWorkers; i++ {
@@ -1878,7 +2055,7 @@ func main() {
 		}
 
 		wg.Add(1)
-		go worker(urls[start:end], results, remainingUrls, &wg, stop)
+		go worker(i+1, urls[start:end], results, remainingUrls, &wg, stop, qm)
 	}
 
 	// Close the results and remainingUrls channels when all workers are done
