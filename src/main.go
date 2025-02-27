@@ -2,20 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
-	"time"
 	"log"
 	"os"
+	"time"
 
 	"goscraper/src/globals"
-	"goscraper/src/handlers"
-	"goscraper/src/helpers/databases"
-	"goscraper/src/types"
+	"goscraper/src/handlers" // Ensure this package has `SetupRoutes()`
+	"goscraper/src/helpers/databases" // Ensure this package has `Connect()`
 	"goscraper/src/utils"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cache"
 	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/etag"
@@ -26,16 +22,14 @@ import (
 
 func main() {
 	if globals.DevMode {
-		godotenv.Load()
+		_ = godotenv.Load()
 	}
 
-	// Set default port to 3000
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
 
-	// Disable Prefork mode for better compatibility
 	app := fiber.New(fiber.Config{
 		Prefork:      false,
 		ServerHeader: "GoScraper",
@@ -47,13 +41,13 @@ func main() {
 		},
 	})
 
+	// Middleware
 	app.Use(recover.New())
 	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
 	app.Use(etag.New())
 
 	allowedOrigins := "http://localhost:" + port
-	urls := os.Getenv("URL")
-	if urls != "" {
+	if urls := os.Getenv("URL"); urls != "" {
 		allowedOrigins += "," + urls
 	}
 
@@ -84,19 +78,20 @@ func main() {
 		LimiterMiddleware:  limiter.SlidingWindow{},
 	}))
 
-	// Register routes
+	// Setup Routes (Ensure `handlers.SetupRoutes` is defined)
 	handlers.SetupRoutes(app)
 
-	// Database connection
+	// Connect to Database (Ensure `databases.Connect` is defined)
 	if err := databases.Connect(); err != nil {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 
-	// Start the server
+	// Start Server
 	log.Printf("Server is running on port %s 🚀", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
+
 
 
