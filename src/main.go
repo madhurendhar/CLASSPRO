@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
+	"log"
+	"os"
 
 	"goscraper/src/globals"
 	"goscraper/src/handlers"
 	"goscraper/src/helpers/databases"
 	"goscraper/src/types"
 	"goscraper/src/utils"
-	"log"
-	"os"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cache"
@@ -84,5 +84,19 @@ func main() {
 		LimiterMiddleware:  limiter.SlidingWindow{},
 	}))
 
-	// Routes
+	// Register routes
+	handlers.SetupRoutes(app)
+
+	// Database connection
+	if err := databases.Connect(); err != nil {
+		log.Fatalf("Database connection failed: %v", err)
+	}
+
+	// Start the server
+	log.Printf("Server is running on port %s 🚀", port)
+	if err := app.Listen(":" + port); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+}
+
 
