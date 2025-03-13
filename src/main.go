@@ -6,10 +6,12 @@ import (
 	"os"
 	"time"
 
-	"goscraper/src/databases"
-	"goscraper/src/globals"
-	"goscraper/src/handlers"
-	"goscraper/src/utils"
+	"github.com/madhurendhar/CLASSPRO/src/databases"
+	"github.com/madhurendhar/CLASSPRO/src/globals"
+	"github.com/madhurendhar/CLASSPRO/src/handlers"
+	"github.com/madhurendhar/CLASSPRO/src/utils"
+)
+
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
