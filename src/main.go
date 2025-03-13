@@ -1,7 +1,5 @@
 package main
 
-package main
-
 import (
 	"encoding/json"
 	"log"
@@ -22,24 +20,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
-
 func main() {
-	// Load environment variables
 	if globals.DevMode {
 		_ = godotenv.Load()
 	}
 
-	// Set server port
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
 
-	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
 		Prefork:      false,
-		ServerHeader: "GoScraper",
-		AppName:      "GoScraper v3.0",
+		ServerHeader: "CLASSPRO",
+		AppName:      "ClassPro API",
 		JSONEncoder:  json.Marshal,
 		JSONDecoder:  json.Unmarshal,
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -47,7 +41,7 @@ func main() {
 		},
 	})
 
-	// Middleware setup
+	// Middleware
 	app.Use(recover.New())
 	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
 	app.Use(etag.New())
@@ -84,15 +78,15 @@ func main() {
 		LimiterMiddleware:  limiter.SlidingWindow{},
 	}))
 
-	// Setup routes
+	// Setup Routes
 	handlers.SetupRoutes(app)
 
-	// Connect to database
+	// Connect to Database
 	if err := databases.Connect(); err != nil {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 
-	// Start the server
+	// Start Server
 	log.Printf("Server is running on port %s 🚀", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
