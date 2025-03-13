@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/madhurendhar/CLASSPRO/src/databases"
+	"github.com/madhurendhar/CLASSPRO/src/helpers/databases"
 	"github.com/madhurendhar/CLASSPRO/src/handlers"
 	"github.com/madhurendhar/CLASSPRO/src/globals"
 	"github.com/madhurendhar/CLASSPRO/src/utils"
