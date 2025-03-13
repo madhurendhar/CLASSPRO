@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/madhurendhar/CLASSPRO/src/helpers/databases"
-	"github.com/madhurendhar/CLASSPRO/src/handlers"
-	"github.com/madhurendhar/CLASSPRO/src/globals"
-	"github.com/madhurendhar/CLASSPRO/src/utils"
+	"github.com/madhurendhar/CLASSPRO/helpers/databases"
+	"github.com/madhurendhar/CLASSPRO/globals"
+	"github.com/madhurendhar/CLASSPRO/handlers"
+	"github.com/madhurendhar/CLASSPRO/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -19,6 +19,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 )
+
 
 func main() {
 	if globals.DevMode {
