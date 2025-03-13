@@ -1,5 +1,7 @@
 package main
 
+package main
+
 import (
 	"encoding/json"
 	"log"
@@ -7,11 +9,9 @@ import (
 	"time"
 
 	"github.com/madhurendhar/CLASSPRO/src/databases"
-	"github.com/madhurendhar/CLASSPRO/src/globals"
 	"github.com/madhurendhar/CLASSPRO/src/handlers"
+	"github.com/madhurendhar/CLASSPRO/src/globals"
 	"github.com/madhurendhar/CLASSPRO/src/utils"
-)
-
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -21,6 +21,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 )
+
 
 func main() {
 	// Load environment variables
