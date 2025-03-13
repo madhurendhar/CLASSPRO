@@ -1,16 +1,14 @@
 package main
 
 import (
-	"goscraper/src/handlers"
-	"goscraper/src/databases"
 	"encoding/json"
 	"log"
 	"os"
 	"time"
 
+	"goscraper/src/databases"
 	"goscraper/src/globals"
-	"goscraper/src/handlers" // Ensure this package has `SetupRoutes()`
-	"goscraper/src/helpers/databases" // Ensure this package has `Connect()`
+	"goscraper/src/handlers"
 	"goscraper/src/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,15 +21,18 @@ import (
 )
 
 func main() {
+	// Load environment variables
 	if globals.DevMode {
 		_ = godotenv.Load()
 	}
 
+	// Set server port
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
 	}
 
+	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
 		Prefork:      false,
 		ServerHeader: "GoScraper",
@@ -43,7 +44,7 @@ func main() {
 		},
 	})
 
-	// Middleware
+	// Middleware setup
 	app.Use(recover.New())
 	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
 	app.Use(etag.New())
@@ -80,20 +81,17 @@ func main() {
 		LimiterMiddleware:  limiter.SlidingWindow{},
 	}))
 
-	// Setup Routes (Ensure `handlers.SetupRoutes` is defined)
+	// Setup routes
 	handlers.SetupRoutes(app)
 
-	// Connect to Database (Ensure `databases.Connect` is defined)
+	// Connect to database
 	if err := databases.Connect(); err != nil {
 		log.Fatalf("Database connection failed: %v", err)
 	}
 
-	// Start Server
+	// Start the server
 	log.Printf("Server is running on port %s 🚀", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-
-
-
