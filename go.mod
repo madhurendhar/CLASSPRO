@@ -1,4 +1,4 @@
-module goscraper
+module github.com/madhurendhar/CLASSPRO
 
 go 1.23
 
