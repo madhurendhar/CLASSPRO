@@ -68,12 +68,14 @@ func main() {
 
 	app.Use(limiter.New(limiter.Config{
 		Max:        25,
-		Expiration: 1 * time.Minute,
-		KeyGenerator: func(c *fiber.Ctx) string {
-			token := c.Get("X-CSRF-Token")
-			if token != "" {
-				return utils.Encode(token)
-			}
+		app.Use(csrf.New(csrf.Config{
+    Expiration: 1 * time.Hour, // Extend token validity
+    KeyLookup:  "header:X-CSRF-Token",
+    CookieName: "csrf_token",
+    CookieSecure: true, // Set to false if testing locally
+    CookieHTTPOnly: true,
+    CookieSameSite: "Strict",
+}))
 			return c.IP()
 		},
 		LimitReached: func(c *fiber.Ctx) error {
